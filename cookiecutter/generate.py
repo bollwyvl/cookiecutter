@@ -23,6 +23,7 @@ from .find import find_template
 from .utils import make_sure_path_exists, unicode_open, work_in
 from .hooks import run_hook
 
+import yaml
 
 if sys.version_info[:2] < (2, 7):
     import simplejson as json
@@ -32,7 +33,19 @@ else:
     from collections import OrderedDict
 
 
-def generate_context(context_file='cookiecutter.json', default_context=None):
+def ordered_load(stream, Loader=yaml.Loader, object_pairs_hook=OrderedDict):
+    """
+    http://stackoverflow.com/questions/5121931
+    """
+    class OrderedLoader(Loader):
+        pass
+    OrderedLoader.add_constructor(
+        yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG,
+        lambda loader, node: object_pairs_hook(loader.construct_pairs(node)))
+    return yaml.load(stream, OrderedLoader)
+
+
+def generate_context(context_file=None, default_context=None):
     """
     Generates the context for a Cookiecutter project template.
     Loads the JSON file as a Python object, with key being the JSON filename.
@@ -44,18 +57,30 @@ def generate_context(context_file='cookiecutter.json', default_context=None):
 
     context = {}
 
-    file_handle = open(context_file)
-    obj = json.load(file_handle, encoding='utf-8', object_pairs_hook=OrderedDict)
+    if context_file is None:
+        context_file = 'cookiecutter.json'
 
-    # Add the Python object to the context dictionary
-    file_name = os.path.split(context_file)[1]
-    file_stem = file_name.split('.')[0]
-    context[file_stem] = obj
+    if not os.path.exists(context_file) and os.path.exists('cookiecutter.yml'):
+        context_file = 'cookiecutter.yml'
+
+    file_stem, file_ext = os.path.splitext(os.path.basename(context_file))
+
+    with open(context_file) as file_handle:
+        if file_ext == ".json":
+            context = json.load(
+                file_handle,
+                encoding='utf-8',
+                object_pairs_hook=OrderedDict)
+        elif file_ext == ".yml":
+            context = ordered_load(
+                file_handle,
+                yaml.SafeLoader,
+                OrderedDict)
 
     # Overwrite context variable defaults with the default context from the
     # user's global config, if available
     if default_context:
-        obj.update(default_context)
+        context.update(default_context)
 
     logging.debug('Context generated is {0}'.format(context))
     return context
@@ -122,7 +147,8 @@ def generate_file(project_dir, infile, context, env):
 
 def render_and_create_dir(dirname, context, output_dir):
     """
-    Renders the name of a directory, creates the directory, and returns its path.
+    Renders the name of a directory, creates the directory, and returns its
+    path.
     """
 
     name_tmpl = Template(dirname)
@@ -142,8 +168,7 @@ def ensure_dir_is_templated(dirname):
     """
     Ensures that dirname is a templated directory name.
     """
-    if '{{' in dirname and \
-        '}}' in dirname:
+    if '{{' in dirname and '}}' in dirname:
         return True
     else:
         raise NonTemplatedInputDirException
@@ -186,7 +211,9 @@ def generate_files(repo_dir, context=None, output_dir="."):
 
         for root, dirs, files in os.walk("."):
             for d in dirs:
-                unrendered_dir = os.path.join(project_dir, os.path.join(root, d))
+                unrendered_dir = os.path.join(
+                    project_dir,
+                    os.path.join(root, d))
                 render_and_create_dir(unrendered_dir, context, output_dir)
 
             for f in files:

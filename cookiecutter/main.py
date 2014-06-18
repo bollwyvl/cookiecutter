@@ -47,10 +47,11 @@ def cookiecutter(input_dir, checkout=None, no_input=False):
             clone_to_dir=config_dict['cookiecutters_dir']
         )
     else:
-        # If it's a local repo, no need to clone or copy to your cookiecutters_dir
+        # If it's a local repo, no need to clone or copy to your
+        # cookiecutters_dir
         repo_dir = input_dir
 
-    context_file = os.path.join(repo_dir, 'cookiecutter.json')
+    context_file = _find_context_file(repo_dir)
     logging.debug('context_file is {0}'.format(context_file))
 
     context = generate_context(
@@ -61,14 +62,23 @@ def cookiecutter(input_dir, checkout=None, no_input=False):
     # prompt the user to manually configure at the command line.
     # except when 'no-input' flag is set
     if not no_input:
-        cookiecutter_dict = prompt_for_config(context)
-        context['cookiecutter'] = cookiecutter_dict
+        context.update(prompt_for_config(context))
+
+    # maintain backwards compatibility with legacy
+    context["cookiecutter"] = context
 
     # Create project from local context and project template.
     generate_files(
         repo_dir=repo_dir,
         context=context
     )
+
+
+def _find_context_file(repo_dir):
+    for possible in ['cookiecutter.json', 'cookiecutter.yml']:
+        context_file = os.path.join(repo_dir, possible)
+        if os.path.exists(context_file):
+            return context_file
 
 
 def _get_parser():
@@ -88,7 +98,8 @@ def _get_parser():
         '-c', '--checkout',
         help='branch, tag or commit to checkout after git clone'
     )
-    cookiecutter_pkg_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    cookiecutter_pkg_dir = os.path.dirname(
+        os.path.dirname(os.path.abspath(__file__)))
     parser.add_argument(
         '-V', '--version',
         help="Show version information and exit.",
@@ -107,6 +118,7 @@ def _get_parser():
 
     return parser
 
+
 def parse_cookiecutter_args(args):
     """ Parse the command-line arguments to Cookiecutter. """
     parser = _get_parser()
@@ -119,7 +131,9 @@ def main():
     args = parse_cookiecutter_args(sys.argv[1:])
 
     if args.verbose:
-        logging.basicConfig(format='%(levelname)s %(filename)s: %(message)s', level=logging.DEBUG)
+        logging.basicConfig(
+            format='%(levelname)s %(filename)s: %(message)s',
+            level=logging.DEBUG)
     else:
         # Log info and above to console
         logging.basicConfig(
